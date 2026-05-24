@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>番茄钟 - Pomodoro Timer</title>
+<style>
+  :root {
+    --work: #e74c3c;
+    --work-light: #fce4e4;
+    --break: #2ecc71;
+    --break-light: #e0f8ec;
+    --bg: #f5f5f5;
+    --text: #333;
+    --ring-bg: #e0e0e0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .container {
+    text-align: center;
+  }
+
+  .title {
+    font-size: 1.4rem;
+    color: #888;
+    margin-bottom: 1rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ---- mode tabs ---- */
+  .modes {
+    display: flex;
+    gap: 0;
+    margin-bottom: 2rem;
+    background: #fff;
+    border-radius: 50px;
+    padding: 5px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    display: inline-flex;
+  }
+
+  .mode-btn {
+    padding: 10px 24px;
+    border: none;
+    background: transparent;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: #888;
+    font-weight: 500;
+    transition: all 0.3s;
+    letter-spacing: 0.02em;
+  }
+
+  .mode-btn.active {
+    background: var(--work);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(231,76,60,0.35);
+  }
+
+  .mode-btn.break-active {
+    background: var(--break);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(46,204,113,0.35);
+  }
+
+  /* ---- timer ring ---- */
+  .timer-wrapper {
+    position: relative;
+    width: 320px;
+    height: 320px;
+    margin: 0 auto 2rem;
+  }
+
+  .timer-ring {
+    transform: rotate(-90deg);
+    width: 320px;
+    height: 320px;
+  }
+
+  .ring-bg {
+    fill: none;
+    stroke: var(--ring-bg);
+    stroke-width: 6;
+  }
+
+  .ring-progress {
+    fill: none;
+    stroke: var(--work);
+    stroke-width: 6;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.9s linear, stroke 0.4s;
+  }
+
+  .ring-progress.break-color {
+    stroke: var(--break);
+  }
+
+  /* tick marks */
+  .tick {
+    stroke: #d0d0d0;
+    stroke-width: 2;
+    stroke-linecap: round;
+  }
+
+  .timer-display {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+  }
+
+  .time {
+    font-size: 4.5rem;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }
+
+  .time.paused-text {
+    color: #bbb;
+  }
+
+  .status {
+    font-size: 0.95rem;
+    color: #aaa;
+    margin-top: 0.3rem;
+    letter-spacing: 0.05em;
+  }
+
+  /* ---- controls ---- */
+  .controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .btn {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
+    font-size: 1.3rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .btn-play {
+    width: 72px;
+    height: 72px;
+    background: var(--work);
+    color: #fff;
+    font-size: 1.6rem;
+    box-shadow: 0 4px 15px rgba(231,76,60,0.4);
+  }
+
+  .btn-play:hover { transform: scale(1.06); }
+  .btn-play:active { transform: scale(0.96); }
+
+  .btn-play.break-btn {
+    background: var(--break);
+    box-shadow: 0 4px 15px rgba(46,204,113,0.4);
+  }
+
+  .btn-secondary {
+    background: #fff;
+    color: #888;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+
+  .btn-secondary:hover { color: #555; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+  .btn-secondary:active { transform: scale(0.94); }
+
+  /* ---- session dots ---- */
+  .sessions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .session-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ddd;
+    transition: all 0.3s;
+  }
+
+  .session-dot.done {
+    background: var(--work);
+    box-shadow: 0 0 8px rgba(231,76,60,0.3);
+  }
+
+  .session-dot.current {
+    background: #fff;
+    border: 3px solid var(--work);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="title">POMODORO</div>
+
+  <div class="modes">
+    <button class="mode-btn active" data-mode="work" onclick="setMode('work')">专注</button>
+    <button class="mode-btn" data-mode="shortBreak" onclick="setMode('shortBreak')">短休息</button>
+    <button class="mode-btn" data-mode="longBreak" onclick="setMode('longBreak')">长休息</button>
+  </div>
+
+  <div class="timer-wrapper">
+    <svg class="timer-ring" viewBox="0 0 200 200">
+      <circle class="ring-bg" cx="100" cy="100" r="94"/>
+      <circle class="ring-progress" id="progressRing" cx="100" cy="100" r="94"/>
+      <!-- tick marks every 5 minutes -->
+      <g id="ticks"></g>
+    </svg>
+    <div class="timer-display">
+      <div class="time" id="timerDisplay">25:00</div>
+      <div class="status" id="statusText">准备专注</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn btn-secondary" onclick="reset()" title="重置">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.5 18a9 9 0 1 0 1.5-10.5L1 10"/></svg>
+    </button>
+
+    <button class="btn btn-play" id="btnPlay" onclick="toggle()" title="开始">
+      <svg id="iconPlay" width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <svg id="iconPause" width="28" height="28" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="4" y="4" width="6" height="16" rx="1"/><rect x="14" y="4" width="6" height="16" rx="1"/></svg>
+    </button>
+
+    <button class="btn btn-secondary" onclick="skip()" title="跳过">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 5 21 12 13 19 13 5"/><polygon points="3 5 11 12 3 19 3 5" fill="currentColor" stroke="none"/></svg>
+    </button>
+  </div>
+
+  <div class="sessions" id="sessionDots">
+    <div class="session-dot current"></div>
+    <div class="session-dot"></div>
+    <div class="session-dot"></div>
+    <div class="session-dot"></div>
+  </div>
+
+</div>
+
+<script>
+const TIMES = { work: 25 * 60, shortBreak: 5 * 60, longBreak: 15 * 60 };
+const LABELS = { work: '专注', shortBreak: '短休息', longBreak: '长休息' };
+const RING_RADIUS = 94;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+let mode = 'work';
+let totalSeconds = TIMES.work;
+let remaining = totalSeconds;
+let timerId = null;
+let sessionCount = 0;
+let paused = false;
+
+const progressRing = document.getElementById('progressRing');
+const timerDisplay = document.getElementById('timerDisplay');
+const statusText = document.getElementById('statusText');
+const btnPlay = document.getElementById('btnPlay');
+const iconPlay = document.getElementById('iconPlay');
+const iconPause = document.getElementById('iconPause');
+
+progressRing.style.strokeDasharray = RING_CIRCUMFERENCE;
+progressRing.style.strokeDashoffset = '0';
+
+function drawTicks(totalSec) {
+  const ticksGroup = document.getElementById('ticks');
+  const interval = 5 * 60; // tick every 5 minutes
+  let html = '';
+  const cx = 100, cy = 100, r = 94;
+  for (let t = interval; t < totalSec; t += interval) {
+    const angle = (t / totalSec) * 2 * Math.PI - Math.PI / 2;
+    const x1 = cx + (r - 8) * Math.cos(angle);
+    const y1 = cy + (r - 8) * Math.sin(angle);
+    const x2 = cx + (r - 0) * Math.cos(angle);
+    const y2 = cy + (r - 0) * Math.sin(angle);
+    html += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" class="tick"/>`;
+  }
+  ticksGroup.innerHTML = html;
+}
+
+function setMode(newMode) {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  paused = false;
+  mode = newMode;
+  totalSeconds = TIMES[mode];
+  remaining = totalSeconds;
+  updateDisplay();
+  updateRing(true);
+  updatePlayButton();
+  updateModeButtons();
+  updateStatusText();
+  drawTicks(totalSeconds);
+}
+
+function updateModeButtons() {
+  document.querySelectorAll('.mode-btn').forEach(b => {
+    b.classList.remove('active', 'break-active');
+    if (b.dataset.mode === mode) {
+      b.classList.add(mode === 'work' ? 'active' : 'break-active');
+    }
+  });
+}
+
+function updatePlayButton() {
+  if (mode === 'work') {
+    btnPlay.classList.remove('break-btn');
+  } else {
+    btnPlay.classList.add('break-btn');
+  }
+  iconPlay.style.display = paused ? '' : 'none';
+  iconPause.style.display = paused ? 'none' : '';
+}
+
+function updateStatusText() {
+  if (timerId && !paused) {
+    statusText.textContent = `正在${LABELS[mode]}`;
+  } else if (paused) {
+    statusText.textContent = '已暂停';
+  } else {
+    statusText.textContent = `准备${LABELS[mode]}`;
+  }
+}
+
+function updateDisplay() {
+  const m = Math.floor(remaining / 60);
+  const s = remaining % 60;
+  timerDisplay.textContent = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  if (paused && !timerId && remaining === totalSeconds) {
+    timerDisplay.classList.remove('paused-text');
+  } else if (paused) {
+    timerDisplay.classList.add('paused-text');
+  } else {
+    timerDisplay.classList.remove('paused-text');
+  }
+}
+
+function updateRing(instant) {
+  const fraction = remaining / totalSeconds;
+  const offset = RING_CIRCUMFERENCE * (1 - fraction);
+  if (instant) {
+    progressRing.style.transition = 'none';
+  } else {
+    progressRing.style.transition = 'stroke-dashoffset 0.9s linear, stroke 0.4s';
+  }
+  progressRing.style.strokeDashoffset = offset;
+  if (mode === 'work') {
+    progressRing.classList.remove('break-color');
+  } else {
+    progressRing.classList.add('break-color');
+  }
+}
+
+function tick() {
+  if (remaining <= 0) {
+    finish();
+    return;
+  }
+  remaining--;
+  updateDisplay();
+  updateRing(false);
+}
+
+function toggle() {
+  if (timerId && !paused) {
+    // pause
+    clearInterval(timerId);
+    timerId = null;
+    paused = true;
+    updatePlayButton();
+    updateStatusText();
+    updateDisplay();
+  } else {
+    // start or resume
+    if (remaining <= 0) {
+      remaining = totalSeconds;
+    }
+    paused = false;
+    timerId = setInterval(tick, 1000);
+    updatePlayButton();
+    updateStatusText();
+    updateDisplay();
+  }
+}
+
+function reset() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  paused = false;
+  remaining = totalSeconds;
+  updateDisplay();
+  updateRing(true);
+  updatePlayButton();
+  updateStatusText();
+}
+
+function skip() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  remaining = 0;
+  updateDisplay();
+  finish();
+}
+
+function finish() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+  paused = false;
+
+  if (mode === 'work') {
+    sessionCount++;
+    updateSessionDots();
+  }
+
+  playSound();
+  notify();
+
+  // auto-switch mode
+  if (mode === 'work') {
+    if (sessionCount > 0 && sessionCount % 4 === 0) {
+      setMode('longBreak');
+    } else {
+      setMode('shortBreak');
+    }
+  } else {
+    setMode('work');
+  }
+}
+
+function updateSessionDots() {
+  const dots = document.querySelectorAll('.session-dot');
+  dots.forEach((dot, i) => {
+    dot.classList.remove('done', 'current');
+    if (i < sessionCount % 4) dot.classList.add('done');
+    if (i === sessionCount % 4) dot.classList.add('current');
+  });
+  if (sessionCount > 0 && sessionCount % 4 === 0) {
+    dots.forEach(d => d.classList.remove('done', 'current'));
+    dots[0].classList.add('current');
+  }
+}
+
+function playSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const notes = mode === 'work' ? [523.25, 659.25, 783.99] : [659.25, 523.25];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.3, ctx.currentTime + i * 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + i * 0.2 + 0.4);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.2);
+      osc.stop(ctx.currentTime + i * 0.2 + 0.5);
+    });
+  } catch (e) { /* audio not available */ }
+}
+
+function notify() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    const title = mode === 'work' ? '🍅 番茄完成！' : '⏰ 休息结束！';
+    const body = mode === 'work'
+      ? '太棒了，休息一下吧！'
+      : '休息结束，开始下一个番茄吧！';
+    new Notification(title, { body, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🍅</text></svg>' });
+  } else if (Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+
+// init
+drawTicks(totalSeconds);
+progressRing.style.strokeDasharray = RING_CIRCUMFERENCE;
+progressRing.style.strokeDashoffset = '0';
+updatePlayButton();
+updateStatusText();
+
+// request notification permission on first click
+document.addEventListener('click', function askNotify() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}, { once: true });
+</script>
+</body>
+</html>
